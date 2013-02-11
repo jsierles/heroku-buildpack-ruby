@@ -10,3 +10,9 @@ else
   puts "no"
   exit 1
 end
+
+if [ -f "$1/conf/nginx.conf.erb" ]; then
+  echo "Nginx" && exit 0
+else
+  echo "no" && exit 1
+fi

@@ -11,3 +11,59 @@ if pack = LanguagePack.detect(ARGV[0], ARGV[1])
     pack.compile
   end
 end
+
+set -e
+
+# config
+NGINX_VERSION="1.2.4"
+#S3_BUCKET=""
+
+# parse and derive params
+BUILD_DIR=$1
+CACHE_DIR=$2
+
+# s3 packages
+#NGINX_PACKAGE="http://${S3_BUCKET}.s3.amazonaws.com/nginx-${NGINX_VERSION}.tgz"
+NGINX_PACKAGE="http://mbilker.us/nginx/nginx-${NGINX_VERSION}.tgz"
+
+# vendor directories
+VENDORED_NGINX=$(mktemp -d -t nginx.XXXXXX)
+
+# download and upack packages
+echo "-----> Fetching nginx binaries"
+curl $NGINX_PACKAGE -s -o - | tar xzf - -C $VENDORED_NGINX
+
+# vendor nginx into the slug
+echo "-----> Vendoring nginx $NGINX_VERSION"
+mkdir -p "$BUILD_DIR/bin"
+cp "$VENDORED_NGINX/sbin/nginx" "$BUILD_DIR/bin/nginx"
+
+# build a startup script
+cat <<EOF >"$BUILD_DIR/bin/start_nginx_and_unicorn"
+#!/usr/bin/env bash
+erb conf/nginx.conf.erb > conf/nginx.conf
+mkdir -p logs
+touch logs/access.log logs/error.log
+(tail -qF -n 0 --pid=\$\$ logs/*.log &)
+
+FAIL=0
+
+exec /app/bin/unicorn -c /app/config/unicorn.conf.rb &
+exec bin/nginx -p . &
+
+for job in `jobs -p`
+do
+    echo $job
+    wait $job || let "FAIL+=1"
+done
+echo $FAIL
+
+if [ "$FAIL" == "0" ];
+then
+    echo "No exits"
+else
+    echo "FAIL! ($FAIL)"
+fi
+EOF
+
+chmod +x "$BUILD_DIR/bin/start_nginx_and_unicorn"

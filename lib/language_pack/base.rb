@@ -63,7 +63,7 @@ class LanguagePack::Base
     {
       "addons" => default_addons,
       "default_process_types" => default_process_types
-    }.to_yaml
+    }
   end
 
   # log output
